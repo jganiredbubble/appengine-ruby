@@ -37,6 +37,8 @@ module AppEngine
 
   module Logger
 
+    REQUEST_ID_VAR = :_grouping_request_id
+    REQUEST_ID_ENV = "action_dispatch.request_id"
 
     # The name of a fiber-local variable storing the trace ID for the current
     # request.
@@ -76,10 +78,11 @@ module AppEngine
       def call(severity, time, progname, msg)  # :nodoc:
         msg = msg.to_s
         return '' if msg.empty?
+        msg = "[#{Thread.current[REQUEST_ID_VAR]}] #{msg}"
         entry = {
           message: (progname.to_s != '') ? "#{progname}: #{msg}" : msg,
           timestamp: {seconds: time.to_i, nanos: time.nsec},
-          severity: SEV_MAP.fetch(severity.to_s, 'CRITICAL')
+          severity: SEV_MAP.fetch(severity.to_s, 'CRITICAL'),
         }
         trace_id = ::Thread.current[@trace_id_var]
         if trace_id
@@ -149,10 +152,12 @@ module AppEngine
       def call(env)  # :nodoc:
         env['rack.logger'] = @logger
         ::Thread.current[@trace_id_var] = Env.extract_trace_id(env)
+        ::Thread.current[REQUEST_ID_VAR] = env[REQUEST_ID_ENV]
         begin
           @app.call(env)
         ensure
           ::Thread.current[@trace_id_var] = nil
+          ::Thread.current[REQUEST_ID_VAR] = nil
         end
       end
 
